@@ -1,0 +1,48 @@
+{
+  "name": "moducreate-jpz",
+  "version": "0.1.0",
+  "description": "A beginner-friendly CLI that creates feature folders inside existing Express, MERN, Laravel, and LaraVue layer folders.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "moducreate-jpz": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "cli",
+    "feature-folders",
+    "express",
+    "mern",
+    "laravel",
+    "vue",
+    "react"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "fast-glob": "^3.3.2",
+    "fs-extra": "^11.2.0",
+    "ora": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.14.10",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
+  }
+}
