@@ -299,7 +299,7 @@ try {
       "Controllers",
       "BookingController.php",
     ),
-    "<?php\n\nnamespace App\\Http\\Controllers;\n\nuse App\\Services\\BookingService;\n\nclass BookingController\n{\n    public function index(): array\n    {\n        return (new BookingService())->all();\n    }\n}\n",
+    "<?php\n\nnamespace App\\Http\\Controllers;\n\nuse App\\Services\\BookingService;\n\nclass BookingController extends Controller\n{\n    public function index(): array\n    {\n        return (new BookingService())->all();\n    }\n}\n",
     "utf8",
   );
   await writeFile(
@@ -322,6 +322,10 @@ try {
   assert.match(
     rewrittenLaravelController,
     /namespace App\\Http\\Controllers\\Booking;/,
+  );
+  assert.match(
+    rewrittenLaravelController,
+    /use App\\Http\\Controllers\\Controller;/,
   );
   assert.match(
     rewrittenLaravelController,
