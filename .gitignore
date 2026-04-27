@@ -5,5 +5,3 @@ dist/
 .env.*
 !.env.example
 .DS_Store
-moducreate-jpz-report*.md
-.moducreate-jpz-backups/
