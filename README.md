@@ -9,8 +9,11 @@ It works with Express, MERN, Laravel, and LaraVue projects without forcing a new
 - Detects your project type automatically.
 - Scans existing files and groups them by module (default behavior).
 - Moves matched files into feature subfolders inside current layer folders.
+- Previews import and namespace path updates during dry runs.
+- Updates relative and configured alias imports after files are moved.
+- Updates Laravel PHP namespaces and `use` statements after PHP classes are moved.
+- Removes empty legacy `modules` or `features` folders after successful moves.
 - Keeps your existing project layout.
-- Generates a report after changes.
 
 ### Example
 
@@ -38,6 +41,12 @@ Run a safe preview first:
 npx moducreate-jpz --dry-run
 ```
 
+Use CI-friendly check mode:
+
+```bash
+npx moducreate-jpz --check
+```
+
 Apply changes:
 
 ```bash
@@ -55,7 +64,9 @@ npx moducreate-jpz --type express --modules auth,user
 ```bash
 npx moducreate-jpz
 npx moducreate-jpz --dry-run
+npx moducreate-jpz --check
 npx moducreate-jpz --copy-existing
+npx moducreate-jpz --yes
 npx moducreate-jpz --type mern --dry-run
 npx moducreate-jpz --type laravel --modules auth,user
 ```
@@ -64,12 +75,13 @@ npx moducreate-jpz --type laravel --modules auth,user
 
 - `-t, --type <type>`: Set project type (`express`, `mern`, `laravel`, `laravue`) when auto-detection is not correct.
 - `-m, --modules <list>`: Create module folders manually using comma-separated names like `auth,user,booking`.
+- `--check`: Preview changes and exit with code `1` when modularization is still needed.
 - `--dry-run`: Show the full preview without writing files.
 - `--copy-existing`: Copy existing matched files into module folders instead of moving.
 - `--move-existing`: Move existing matched files into module folders (default).
-- `--no-backup`: Skip backup creation before copy/move operations.
 - `--folders-only`: Create only folders, without starter files.
 - `--force`: Overwrite existing target files.
+- `-y, --yes`: Confirm move operations without prompting, useful for scripts.
 
 ## Supported Stacks
 
@@ -80,16 +92,18 @@ npx moducreate-jpz --type laravel --modules auth,user
 
 ## Safety Notes
 
-- A preview is shown before writing changes.
+- A preview is shown before writing changes, including import and namespace updates.
+- Move operations ask for confirmation unless `--yes` is passed.
+- Relative JavaScript, TypeScript, Vue imports, and common `tsconfig`/`jsconfig`/Vite aliases are updated after moved files land in their new folders.
+- Laravel PHP namespaces and `use` statements are updated when classes move under module folders.
 - Existing target files are skipped unless `--force` is used.
-- Copy/move operations create a backup by default.
 - Dry run mode makes no file changes.
-- A report file is created after execution (`moducreate-jpz-report.md`, or a timestamped name if one already exists).
 
 ## Development
 
 ```bash
 npm install
+npm test
 npm run build
 npm run dev -- --dry-run --type express --modules auth,user
 ```

@@ -41,9 +41,6 @@ const skippedModuleNames = new Set([
   "vite",
 ]);
 
-const uniqueTimestamp = (): string =>
-  new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
-
 const pathExists = (targetPath: string): Promise<boolean> => fs.pathExists(targetPath);
 
 const toModuleName = (value: string): ModuleName | undefined => {
@@ -613,35 +610,6 @@ const scanLegacyFrontendFeatures = async (
   }
 
   return matchedFiles;
-};
-
-export const createBackupPlan = (
-  cwd: string,
-  relocationPlan: PlanItem[],
-): { backupDir: string; plan: PlanItem[] } => {
-  const backupDir = path.join(cwd, ".moducreate-jpz-backups", uniqueTimestamp());
-  const plan: PlanItem[] = [
-    {
-      operation: "directory",
-      targetPath: backupDir,
-      description: "backup folder",
-    },
-  ];
-
-  for (const item of relocationPlan) {
-    if (!item.sourcePath || (item.operation !== "copy" && item.operation !== "move")) {
-      continue;
-    }
-
-    plan.push({
-      operation: "copy",
-      sourcePath: item.sourcePath,
-      targetPath: path.join(backupDir, path.relative(cwd, item.sourcePath)),
-      description: "backup existing file",
-    });
-  }
-
-  return { backupDir, plan };
 };
 
 export const generateAutoStructurePlan = async (

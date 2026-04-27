@@ -1,3 +1,4 @@
+import { createInterface } from "node:readline/promises";
 import path from "node:path";
 import chalk from "chalk";
 import fs from "fs-extra";
@@ -7,10 +8,7 @@ import {
   detectProjectType,
   detectScriptLanguage,
 } from "../detectors/detectProjectType.js";
-import {
-  createBackupPlan,
-  generateAutoStructurePlan,
-} from "../generators/autoStructureGenerator.js";
+import { generateAutoStructurePlan } from "../generators/autoStructureGenerator.js";
 import { generateLayeredPlan } from "../generators/layeredGenerator.js";
 import type {
   CreateModulesOptions,
@@ -21,9 +19,19 @@ import type {
   ResolvedPlanItem,
   ScriptLanguage,
 } from "../types.js";
-import { createReport } from "../utils/createReport.js";
+import { cleanupEmptyMovedSourceFolders } from "../utils/cleanupEmptyFolders.js";
 import { parseModuleNames } from "../utils/formatModuleName.js";
 import { logger } from "../utils/logger.js";
+import {
+  previewImportPathRewrites,
+  rewriteImportPaths,
+  type ImportRewriteResult,
+} from "../utils/rewriteImportPaths.js";
+import {
+  previewPhpNamespaceRewrites,
+  rewritePhpNamespaces,
+  type PhpRewriteResult,
+} from "../utils/rewritePhpNamespaces.js";
 import { resolvePlan, writePlan } from "../utils/safeWriteFile.js";
 
 const projectTypes: ProjectType[] = ["express", "mern", "laravel", "laravue"];
@@ -222,6 +230,35 @@ const printPreview = (plan: ResolvedPlanItem[]): void => {
   );
 };
 
+const printRewritePreview = (
+  importPreview: ImportRewriteResult,
+  phpPreview: PhpRewriteResult,
+): void => {
+  const totalChanges =
+    importPreview.specifiersUpdated + phpPreview.referencesUpdated;
+
+  if (totalChanges === 0) {
+    logger.muted("\nImport/namespace preview: no path updates needed");
+    return;
+  }
+
+  logger.info("\nImport/namespace preview");
+
+  [...importPreview.changes, ...phpPreview.changes]
+    .slice(0, previewLimit)
+    .forEach((change) => {
+      console.log(
+        `  ${chalk.blue("update")} ${path.relative(process.cwd(), change.filePath)}: ${change.from} -> ${change.to}`,
+      );
+    });
+
+  if (totalChanges > previewLimit) {
+    logger.muted(`  ...and ${totalChanges - previewLimit} more updates`);
+  }
+
+  logger.muted(`\nTotals: ${totalChanges} import/namespace updates`);
+};
+
 const getExistingFileAction = async (
   options: CreateModulesOptions,
 ): Promise<ExistingFileAction> => {
@@ -238,6 +275,57 @@ const getExistingFileAction = async (
   }
 
   return "move";
+};
+
+const hasPendingWrites = (plan: ResolvedPlanItem[]): boolean =>
+  plan.some((item) => item.status === "create" || item.status === "overwrite");
+
+const hasBlockingConflicts = (plan: ResolvedPlanItem[]): boolean =>
+  plan.some((item) => item.status === "conflict");
+
+const hasMoveOperations = (plan: ResolvedPlanItem[]): boolean =>
+  plan.some(
+    (item) =>
+      item.operation === "move" &&
+      (item.status === "create" || item.status === "overwrite"),
+  );
+
+const confirmMoveOperations = async (
+  plan: ResolvedPlanItem[],
+  options: CreateModulesOptions,
+): Promise<void> => {
+  if (!hasMoveOperations(plan) || options.yes) {
+    return;
+  }
+
+  const moveCount = plan.filter(
+    (item) =>
+      item.operation === "move" &&
+      (item.status === "create" || item.status === "overwrite"),
+  ).length;
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(
+      `Moving ${moveCount} file${moveCount === 1 ? "" : "s"} requires confirmation. Re-run with --yes to continue, or use --copy-existing to avoid moving files.`,
+    );
+  }
+
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    const answer = await readline.question(
+      `Move ${moveCount} existing file${moveCount === 1 ? "" : "s"} into module folders? [y/N] `,
+    );
+
+    if (!/^y(?:es)?$/i.test(answer.trim())) {
+      throw new Error("Cancelled. No files were changed.");
+    }
+  } finally {
+    readline.close();
+  }
 };
 
 export const createModules = async (
@@ -292,9 +380,7 @@ export const createModules = async (
     frontendRoot: paths.frontendRoot,
     moduleFormat,
   };
-  let modules = moduleFilter;
   let plan: PlanItem[];
-  let backupDir: string | undefined;
 
   if (shouldAutoStructure) {
     const existingFileAction = await getExistingFileAction(rawOptions);
@@ -307,7 +393,7 @@ export const createModules = async (
     });
     scanSpinner.succeed(`Found ${autoStructure.matchedFiles} matching files`);
 
-    modules = moduleFilter ?? autoStructure.modules;
+    const modules = moduleFilter ?? autoStructure.modules;
 
     if (!modules || modules.length === 0) {
       logger.warn("No module-like files were found.");
@@ -315,26 +401,25 @@ export const createModules = async (
       return;
     }
 
-    const needsBackup = autoStructure.plan.length > 0 && rawOptions.backup !== false;
-    const backup = needsBackup ? createBackupPlan(cwd, autoStructure.plan) : undefined;
-    backupDir = backup?.backupDir;
-    plan = [...(backup?.plan ?? []), ...autoStructure.plan];
+    plan = autoStructure.plan;
   } else {
     if (!moduleFilter || moduleFilter.length === 0) {
       throw new Error("Use --modules auth,user to create folders manually.");
     }
 
-    modules = moduleFilter;
     plan = buildPlan(projectType, {
       ...planOptions,
-      modules,
+      modules: moduleFilter,
     });
   }
 
-  let overwriteFiles = Boolean(rawOptions.force);
-  let resolvedPlan = await resolvePlan(cwd, plan, overwriteFiles);
+  const overwriteFiles = Boolean(rawOptions.force);
+  const resolvedPlan = await resolvePlan(cwd, plan, overwriteFiles);
+  const importRewritePreview = await previewImportPathRewrites(cwd, resolvedPlan);
+  const phpRewritePreview = await previewPhpNamespaceRewrites(cwd, resolvedPlan);
 
   printPreview(resolvedPlan);
+  printRewritePreview(importRewritePreview, phpRewritePreview);
 
   const existingFiles = resolvedPlan.filter(
     (item) =>
@@ -354,10 +439,29 @@ export const createModules = async (
     logger.warn("\nConflicts were found. Conflicted paths will be skipped.");
   }
 
+  if (rawOptions.check) {
+    const needsChanges =
+      hasPendingWrites(resolvedPlan) ||
+      hasBlockingConflicts(resolvedPlan) ||
+      importRewritePreview.specifiersUpdated > 0 ||
+      phpRewritePreview.referencesUpdated > 0;
+
+    if (needsChanges) {
+      logger.warn("\nCheck failed. Changes are needed.");
+      process.exitCode = 1;
+    } else {
+      logger.success("\nCheck passed. No changes needed.");
+    }
+
+    return;
+  }
+
   if (rawOptions.dryRun) {
     logger.success("\nDry run complete. No files were created or changed.");
     return;
   }
+
+  await confirmMoveOperations(resolvedPlan, rawOptions);
 
   const writeSpinner = ora("Creating folders and files").start();
   const results = await writePlan(resolvedPlan);
@@ -369,15 +473,40 @@ export const createModules = async (
     writeSpinner.succeed("Folders created");
   }
 
-  const reportPath = await createReport({
-    cwd,
-    projectType,
-    modules: modules.map((moduleName) => moduleName.slug),
-    includeStarterFiles,
-    dryRun: Boolean(rawOptions.dryRun),
-    overwriteFiles,
-    results,
-  });
+  let updatedImports = 0;
+  let updatedPhpNamespaces = 0;
+
+  if (
+    results.some(
+      (result) =>
+        result.action === "copied" ||
+        result.action === "moved" ||
+        result.action === "overwritten",
+    )
+  ) {
+    const rewriteSpinner = ora("Updating import paths").start();
+
+    try {
+      const rewriteResult = await rewriteImportPaths(cwd, results);
+      updatedImports = rewriteResult.specifiersUpdated;
+      const phpRewriteResult = await rewritePhpNamespaces(cwd, results);
+      updatedPhpNamespaces = phpRewriteResult.referencesUpdated;
+      const totalUpdates = updatedImports + updatedPhpNamespaces;
+
+      if (totalUpdates > 0) {
+        rewriteSpinner.succeed(
+          `Updated ${totalUpdates} import/namespace path${totalUpdates === 1 ? "" : "s"}`,
+        );
+      } else {
+        rewriteSpinner.succeed("Import and namespace paths already up to date");
+      }
+    } catch (error) {
+      rewriteSpinner.warn("Could not update every import or namespace path");
+      logger.warn(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  const cleanup = await cleanupEmptyMovedSourceFolders(cwd, results);
 
   const created = results.filter((result) => result.action === "created").length;
   const copied = results.filter((result) => result.action === "copied").length;
@@ -388,18 +517,10 @@ export const createModules = async (
   ).length;
 
   logger.success(
-    `\nDone: ${created} created, ${copied} copied, ${moved} moved, ${overwritten} overwritten, ${skipped} skipped.`,
+    `\nDone: ${created} created, ${copied} copied, ${moved} moved, ${overwritten} overwritten, ${skipped} skipped, ${updatedImports} imports updated, ${updatedPhpNamespaces} PHP namespaces updated, ${cleanup.removedFolders} empty folders removed.`,
   );
 
-  if (reportPath) {
-    logger.muted(`Report: ${path.relative(cwd, reportPath)}`);
-  }
-
-  if (backupDir) {
-    logger.muted(`Backup: ${path.relative(cwd, backupDir)}`);
-  }
-
   if (failed.length > 0) {
-    logger.warn("Review the report for paths that could not be created.");
+    logger.warn("Some paths could not be created. Review the preview output above.");
   }
 };

@@ -9,12 +9,16 @@
   },
   "files": [
     "dist",
+    "scripts/postinstall.mjs",
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run clean && tsc",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "dev": "tsx src/index.ts",
+    "postinstall": "node scripts/postinstall.mjs",
     "start": "node dist/index.js",
+    "test": "npm run typecheck && npm run build && node scripts/smoke-test.mjs",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

@@ -1,16 +1,29 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { createModules } from "./commands/createModules.js";
 import { logger } from "./utils/logger.js";
 
 const program = new Command();
 
+const getPackageVersion = (): string => {
+  try {
+    const packageJson = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version?: unknown };
+
+    return typeof packageJson.version === "string" ? packageJson.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+};
+
 program
   .name("moducreate-jpz")
   .description(
     "Add feature folders inside existing Express, MERN, Laravel, and LaraVue layer folders.",
   )
-  .version("0.1.0")
+  .version(getPackageVersion())
   .option(
     "-t, --type <type>",
     "project type: express, mern, laravel, or laravue",
@@ -31,14 +44,11 @@ program
     "--move-existing",
     "move matching existing files into layer folders during auto-structure (default)",
   )
-  .option(
-    "--no-backup",
-    "skip backup when copying or moving existing files",
-  )
   .option("--folders-only", "create only folders without starter files")
+  .option("--check", "check whether changes are needed without writing files")
   .option("--dry-run", "show the preview without creating files")
   .option("--force", "overwrite existing files without prompting")
-  .option("-y, --yes", "kept for script compatibility; the CLI is non-interactive")
+  .option("-y, --yes", "confirm move operations without prompting")
   .showHelpAfterError();
 
 try {

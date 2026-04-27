@@ -62,7 +62,7 @@ export interface CreateModulesOptions {
   autoStructure?: boolean;
   copyExisting?: boolean;
   moveExisting?: boolean;
-  backup?: boolean;
+  check?: boolean;
   dryRun?: boolean;
   foldersOnly?: boolean;
   force?: boolean;
