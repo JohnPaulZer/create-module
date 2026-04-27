@@ -8,7 +8,7 @@ export interface PhpRewriteChange {
   originalFilePath: string;
   from: string;
   to: string;
-  kind: "namespace" | "use";
+  kind: "namespace" | "use" | "import";
 }
 
 export interface PhpRewriteResult {
@@ -45,6 +45,26 @@ const isPhpFile = (targetPath: string): boolean =>
 
 const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const reservedPhpTypeNames = new Set([
+  "array",
+  "bool",
+  "callable",
+  "false",
+  "float",
+  "int",
+  "iterable",
+  "mixed",
+  "never",
+  "null",
+  "object",
+  "parent",
+  "self",
+  "static",
+  "string",
+  "true",
+  "void",
+]);
 
 const namespaceFromAppPath = (cwd: string, targetPath: string): string | undefined => {
   const relativePath = path.relative(cwd, targetPath);
@@ -153,6 +173,145 @@ const getPhpClassRelocations = (
   return relocations.sort((left, right) => right.oldFqcn.length - left.oldFqcn.length);
 };
 
+const getExistingUseShortNames = (content: string): Set<string> => {
+  const names = new Set<string>();
+  const useRegex = /^use\s+(?!function\b|const\b)([^;]+);/gm;
+
+  for (const match of content.matchAll(useRegex)) {
+    const statement = match[1]?.trim();
+
+    if (!statement) {
+      continue;
+    }
+
+    const aliasMatch = statement.match(/\bas\s+([A-Za-z_][A-Za-z0-9_]*)$/i);
+
+    if (aliasMatch?.[1]) {
+      names.add(aliasMatch[1]);
+      continue;
+    }
+
+    const className = statement.split("\\").pop()?.trim();
+
+    if (className) {
+      names.add(className);
+    }
+  }
+
+  return names;
+};
+
+const getDeclaredClassName = (content: string): string | undefined =>
+  content.match(/\b(?:class|interface|trait|enum)\s+([A-Za-z_][A-Za-z0-9_]*)/)?.[1];
+
+const addCandidateClassName = (candidates: Set<string>, value: string): void => {
+  const className = value.trim().replace(/^\\/, "");
+
+  if (
+    !/^[A-Z][A-Za-z0-9_]*$/.test(className) ||
+    reservedPhpTypeNames.has(className.toLowerCase())
+  ) {
+    return;
+  }
+
+  candidates.add(className);
+};
+
+const getOldNamespaceImportCandidates = (content: string): Set<string> => {
+  const candidates = new Set<string>();
+
+  for (const match of content.matchAll(/\bextends\s+([\\A-Z][A-Za-z0-9_\\]*)/g)) {
+    const className = match[1];
+
+    if (className && !className.includes("\\")) {
+      addCandidateClassName(candidates, className);
+    }
+  }
+
+  for (const match of content.matchAll(/\bimplements\s+([^{]+)/g)) {
+    const interfaceList = match[1] ?? "";
+
+    interfaceList.split(",").forEach((item) => {
+      const className = item.trim();
+
+      if (className && !className.includes("\\")) {
+        addCandidateClassName(candidates, className);
+      }
+    });
+  }
+
+  return candidates;
+};
+
+const insertUseStatements = (content: string, useStatements: string[]): string => {
+  if (useStatements.length === 0) {
+    return content;
+  }
+
+  const namespaceMatch = content.match(/^namespace\s+[^;]+;\s*/m);
+
+  if (namespaceMatch?.index !== undefined) {
+    const insertAt = namespaceMatch.index + namespaceMatch[0].length;
+    const afterNamespace = content.slice(insertAt);
+    const separator = afterNamespace.startsWith("\n") ? "" : "\n";
+
+    return `${content.slice(0, insertAt)}${separator}${useStatements.join("\n")}\n${afterNamespace}`;
+  }
+
+  const phpOpenMatch = content.match(/^<\?php\s*/);
+
+  if (phpOpenMatch?.index !== undefined) {
+    const insertAt = phpOpenMatch.index + phpOpenMatch[0].length;
+    const afterOpen = content.slice(insertAt);
+    const separator = afterOpen.startsWith("\n") ? "" : "\n";
+
+    return `${content.slice(0, insertAt)}${separator}${useStatements.join("\n")}\n${afterOpen}`;
+  }
+
+  return `${useStatements.join("\n")}\n${content}`;
+};
+
+const addOldNamespaceImports = (
+  content: string,
+  oldNamespace: string,
+  newNamespace: string,
+  currentFilePath: string,
+  originalFilePath: string,
+  changes: PhpRewriteChange[],
+): string => {
+  if (oldNamespace === newNamespace) {
+    return content;
+  }
+
+  const existingUseShortNames = getExistingUseShortNames(content);
+  const declaredClassName = getDeclaredClassName(content);
+  const candidates = [...getOldNamespaceImportCandidates(content)].filter(
+    (className) =>
+      className !== declaredClassName && !existingUseShortNames.has(className),
+  );
+  const useStatements: string[] = [];
+
+  for (const className of candidates) {
+    const fqcn = `${oldNamespace}\\${className}`;
+    const useRegex = new RegExp(`^use\\s+${escapeRegExp(fqcn)}\\s*;`, "m");
+
+    if (useRegex.test(content)) {
+      continue;
+    }
+
+    useStatements.push(`use ${fqcn};`);
+    changes.push({
+      filePath: currentFilePath,
+      originalFilePath,
+      from: className,
+      to: fqcn,
+      kind: "import",
+    });
+  }
+
+  return insertUseStatements(content, useStatements);
+};
+
 const rewritePhpContent = (
   cwd: string,
   content: string,
@@ -166,17 +325,19 @@ const rewritePhpContent = (
   const newNamespace = shouldRewriteNamespace
     ? namespaceFromAppPath(cwd, currentFilePath)
     : undefined;
+  let oldNamespace: string | undefined;
 
   if (newNamespace) {
     updatedContent = updatedContent.replace(
       /^namespace\s+([^;]+);/m,
-      (fullMatch, oldNamespace: string) => {
-        const trimmedOldNamespace = oldNamespace.trim();
+      (fullMatch, matchedOldNamespace: string) => {
+        const trimmedOldNamespace = matchedOldNamespace.trim();
 
         if (trimmedOldNamespace === newNamespace) {
           return fullMatch;
         }
 
+        oldNamespace = trimmedOldNamespace;
         changes.push({
           filePath: currentFilePath,
           originalFilePath,
@@ -188,6 +349,17 @@ const rewritePhpContent = (
         return `namespace ${newNamespace};`;
       },
     );
+
+    if (oldNamespace) {
+      updatedContent = addOldNamespaceImports(
+        updatedContent,
+        oldNamespace,
+        newNamespace,
+        currentFilePath,
+        originalFilePath,
+        changes,
+      );
+    }
   }
 
   for (const relocation of classRelocations) {
