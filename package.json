@@ -1,6 +1,6 @@
 {
   "name": "moducreate-jpz",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A beginner-friendly CLI that creates feature folders inside existing Express, MERN, Laravel, and LaraVue layer folders.",
   "type": "module",
   "main": "./dist/index.js",
@@ -45,7 +45,6 @@
     "tsx": "^4.16.2",
     "typescript": "^5.5.3"
   },
-
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JohnPaulZer/create-module.git"
@@ -55,4 +54,3 @@
   },
   "homepage": "https://github.com/JohnPaulZer/create-module#readme"
 }
-
