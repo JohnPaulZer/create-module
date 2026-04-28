@@ -1,6 +1,6 @@
-import path from "node:path";
-import fs from "fs-extra";
 import fg from "fast-glob";
+import fs from "fs-extra";
+import path from "node:path";
 import type { ModuleFormat, ProjectType, ScriptLanguage } from "../types.js";
 
 interface DetectionCandidate {
@@ -75,20 +75,21 @@ const hasAny = async (cwd: string, patterns: string[]): Promise<boolean> => {
 export const detectProjectType = async (
   cwd: string,
 ): Promise<DetectionResult> => {
-  const rootPackage = await readJson<PackageJson>(path.join(cwd, "package.json"));
-  const clientPackage = await readJson<PackageJson>(
-    path.join(cwd, "client", "package.json"),
-  );
-  const serverPackage = await readJson<PackageJson>(
-    path.join(cwd, "server", "package.json"),
-  );
-  const frontendPackage = await readJson<PackageJson>(
-    path.join(cwd, "frontend", "package.json"),
-  );
-  const backendPackage = await readJson<PackageJson>(
-    path.join(cwd, "backend", "package.json"),
-  );
-  const composer = await readJson<ComposerJson>(path.join(cwd, "composer.json"));
+  const [
+    rootPackage,
+    clientPackage,
+    serverPackage,
+    frontendPackage,
+    backendPackage,
+    composer,
+  ] = await Promise.all([
+    readJson<PackageJson>(path.join(cwd, "package.json")),
+    readJson<PackageJson>(path.join(cwd, "client", "package.json")),
+    readJson<PackageJson>(path.join(cwd, "server", "package.json")),
+    readJson<PackageJson>(path.join(cwd, "frontend", "package.json")),
+    readJson<PackageJson>(path.join(cwd, "backend", "package.json")),
+    readJson<ComposerJson>(path.join(cwd, "composer.json")),
+  ]);
 
   const packages = [
     rootPackage,
@@ -104,33 +105,53 @@ export const detectProjectType = async (
   const hasReact = packageHas("react");
   const hasVue = packageHas("vue");
   const hasLaravelFramework = hasDependency(composer, "laravel/framework");
-  const hasArtisan = await exists(cwd, "artisan");
-  const hasLaravelControllers = await exists(cwd, "app/Http/Controllers");
-  const hasResourcesJs = await exists(cwd, "resources/js");
-  const hasViteConfig =
-    (await exists(cwd, "vite.config.ts")) || (await exists(cwd, "vite.config.js"));
-  const hasClientServer =
-    ((await exists(cwd, "client")) && (await exists(cwd, "server"))) ||
-    ((await exists(cwd, "frontend")) && (await exists(cwd, "backend")));
-  const hasSrc = await exists(cwd, "src");
-  const hasExpressShape = await hasAny(cwd, [
-    "src/routes",
-    "src/controllers",
-    "src/services",
-    "routes",
-    "controllers",
-    "services",
+  const [
+    hasArtisan,
+    hasLaravelControllers,
+    hasResourcesJs,
+    hasViteTs,
+    hasViteJs,
+    hasClient,
+    hasServer,
+    hasFrontend,
+    hasBackend,
+    hasSrc,
+    hasExpressShape,
+    hasViteReactFrontend,
+  ] = await Promise.all([
+    exists(cwd, "artisan"),
+    exists(cwd, "app/Http/Controllers"),
+    exists(cwd, "resources/js"),
+    exists(cwd, "vite.config.ts"),
+    exists(cwd, "vite.config.js"),
+    exists(cwd, "client"),
+    exists(cwd, "server"),
+    exists(cwd, "frontend"),
+    exists(cwd, "backend"),
+    exists(cwd, "src"),
+    hasAny(cwd, [
+      "src/routes",
+      "src/controllers",
+      "src/services",
+      "routes",
+      "controllers",
+      "services",
+    ]),
+    hasReact
+      ? hasAny(cwd, [
+          "vite.config.ts",
+          "vite.config.js",
+          "client/vite.config.ts",
+          "client/vite.config.js",
+          "frontend/vite.config.ts",
+          "frontend/vite.config.js",
+        ])
+      : Promise.resolve(false),
   ]);
-  const hasViteReactFrontend =
-    hasReact &&
-    (await hasAny(cwd, [
-      "vite.config.ts",
-      "vite.config.js",
-      "client/vite.config.ts",
-      "client/vite.config.js",
-      "frontend/vite.config.ts",
-      "frontend/vite.config.js",
-    ]));
+
+  const hasViteConfig = hasViteTs || hasViteJs;
+  const hasClientServer =
+    (hasClient && hasServer) || (hasFrontend && hasBackend);
 
   const candidates: DetectionCandidate[] = [];
 
@@ -158,12 +179,18 @@ export const detectProjectType = async (
     });
   }
 
-  if ((hasExpress && hasReact) || hasClientServer || (hasViteReactFrontend && hasExpress)) {
+  if (
+    (hasExpress && hasReact) ||
+    hasClientServer ||
+    (hasViteReactFrontend && hasExpress)
+  ) {
     candidates.push({
       type: "mern",
       confidence: hasClientServer ? 90 : 82,
       reasons: [
-        hasClientServer ? "client and server folders exist" : "React and Express detected",
+        hasClientServer
+          ? "client and server folders exist"
+          : "React and Express detected",
       ],
     });
   }

@@ -4,6 +4,17 @@ moducreate-jpz organizes feature files inside your existing layer folders.
 
 It works with Express, MERN, Laravel, and LaraVue projects without forcing a new top-level modules folder.
 
+## Recent Improvements
+
+**Version 2.0.0 - Performance & Quality Enhancements:**
+
+- **Performance Optimizations**: Parallelized async file system operations for faster project detection and file scanning
+- **Stricter TypeScript**: Enhanced type safety with `noUncheckedIndexedAccess`, `noUnusedLocals`, and other strict compiler options
+- **Better Logging**: Added timestamps and improved log levels with visual indicators for better debugging
+- **Input Validation**: Added comprehensive configuration validation to catch errors early with clear error messages
+- **Memoization Utility**: Created a memoization system for caching expensive operations (available for future use)
+- **Code Quality**: Removed unused code, improved error handling, and fixed TypeScript type issues
+
 ## What It Does
 
 - Detects your project type automatically.

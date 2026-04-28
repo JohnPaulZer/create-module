@@ -1,6 +1,6 @@
-import path from "node:path";
 import fg from "fast-glob";
 import fs from "fs-extra";
+import path from "node:path";
 import type { ResolvedPlanItem, WriteResult } from "../types.js";
 
 export interface RewriteChange {
@@ -76,13 +76,10 @@ const importRegexes = [
   /(\bexport\s+(?:type\s+)?[^'"]*?\s+from\s*)(["'])([^"']+)\2/g,
   /(\b(?:require|import)\s*\(\s*)(["'])([^"']+)\2/g,
 ];
-const successfulRelocationActions = new Set([
-  "copied",
-  "moved",
-  "overwritten",
-]);
+const successfulRelocationActions = new Set(["copied", "moved", "overwritten"]);
 
-const toKey = (targetPath: string): string => path.normalize(path.resolve(targetPath));
+const toKey = (targetPath: string): string =>
+  path.normalize(path.resolve(targetPath));
 
 const isRelativeSpecifier = (specifier: string): boolean =>
   specifier.startsWith("./") || specifier.startsWith("../");
@@ -110,7 +107,9 @@ const stripKnownExtension = (value: string): string => {
   return extension ? value.slice(0, -extension.length) : value;
 };
 
-const getExtensionCandidates = (specifierExtension: string | undefined): string[] => {
+const getExtensionCandidates = (
+  specifierExtension: string | undefined,
+): string[] => {
   if (specifierExtension === ".js") {
     return [".js", ".ts", ".tsx", ".mjs", ".mts"];
   }
@@ -163,7 +162,9 @@ const normalizeConfigTarget = (configDir: string, target: string): string => {
   return toKey(path.resolve(configDir, normalizedTarget || "."));
 };
 
-const normalizeSpecifierPrefix = (value: string): { prefix: string; wildcard: boolean } => {
+const normalizeSpecifierPrefix = (
+  value: string,
+): { prefix: string; wildcard: boolean } => {
   const wildcard = value.includes("*");
   const prefix = value.replace(/\*.*$/, "").replace(/\/$/, "");
 
@@ -191,7 +192,10 @@ const loadTsConfigAliases = async (cwd: string): Promise<AliasEntry[]> => {
           paths?: Record<string, string[]>;
         };
       };
-      const baseUrl = path.resolve(configDir, config.compilerOptions?.baseUrl ?? ".");
+      const baseUrl = path.resolve(
+        configDir,
+        config.compilerOptions?.baseUrl ?? ".",
+      );
       const paths = config.compilerOptions?.paths ?? {};
 
       for (const [specifier, targets] of Object.entries(paths)) {
@@ -234,7 +238,8 @@ const loadViteAliases = async (cwd: string): Promise<AliasEntry[]> => {
       /find\s*:\s*["']([^"']+)["'][\s\S]{0,120}?replacement\s*:\s*(?:path\.resolve\([^,]+,\s*)?["']([^"']+)["']\)?/g;
 
     for (const match of content.matchAll(objectAliasRegex)) {
-      const [, specifierPrefix, targetPrefix] = match;
+      const specifierPrefix = match[1];
+      const targetPrefix = match[2];
 
       if (!specifierPrefix || !targetPrefix) {
         continue;
@@ -248,7 +253,8 @@ const loadViteAliases = async (cwd: string): Promise<AliasEntry[]> => {
     }
 
     for (const match of content.matchAll(findReplacementRegex)) {
-      const [, specifierPrefix, targetPrefix] = match;
+      const specifierPrefix = match[1];
+      const targetPrefix = match[2];
 
       if (!specifierPrefix || !targetPrefix) {
         continue;
@@ -266,7 +272,10 @@ const loadViteAliases = async (cwd: string): Promise<AliasEntry[]> => {
 };
 
 const loadAliases = async (cwd: string): Promise<AliasEntry[]> => {
-  const aliases = [...(await loadTsConfigAliases(cwd)), ...(await loadViteAliases(cwd))];
+  const aliases = [
+    ...(await loadTsConfigAliases(cwd)),
+    ...(await loadViteAliases(cwd)),
+  ];
   const seen = new Set<string>();
 
   return aliases
@@ -280,7 +289,10 @@ const loadAliases = async (cwd: string): Promise<AliasEntry[]> => {
       seen.add(key);
       return true;
     })
-    .sort((left, right) => right.specifierPrefix.length - left.specifierPrefix.length);
+    .sort(
+      (left, right) =>
+        right.specifierPrefix.length - left.specifierPrefix.length,
+    );
 };
 
 const resolveAliasTarget = (
@@ -316,7 +328,10 @@ const resolveExistingTarget = async (
   specifierExtension: string | undefined,
   relocatedTargetsBySource: Map<string, string>,
 ): Promise<string | undefined> => {
-  for (const candidate of getCandidatePaths(rawTargetPath, specifierExtension)) {
+  for (const candidate of getCandidatePaths(
+    rawTargetPath,
+    specifierExtension,
+  )) {
     const key = toKey(candidate);
 
     if (relocatedTargetsBySource.has(key)) {
@@ -360,10 +375,7 @@ const toAliasSpecifier = (
   preferredAlias?: AliasEntry,
 ): string | undefined => {
   const sortedAliases = preferredAlias
-    ? [
-        preferredAlias,
-        ...aliases.filter((alias) => alias !== preferredAlias),
-      ]
+    ? [preferredAlias, ...aliases.filter((alias) => alias !== preferredAlias)]
     : aliases;
 
   for (const alias of sortedAliases) {
@@ -421,7 +433,8 @@ const rewriteSpecifier = async (
   }
 
   const relocatedTargetPath =
-    relocatedTargetsBySource.get(toKey(resolvedTargetPath)) ?? resolvedTargetPath;
+    relocatedTargetsBySource.get(toKey(resolvedTargetPath)) ??
+    resolvedTargetPath;
 
   if (aliasTarget) {
     return (
@@ -464,8 +477,15 @@ const rewriteContent = async (
     let lastIndex = 0;
 
     for (const match of matches) {
-      const [fullMatch, prefix, quote, specifier] = match;
+      const fullMatch = match[0];
+      const prefix = match[1];
+      const quote = match[2];
+      const specifier = match[3];
       const index = match.index ?? 0;
+
+      if (!fullMatch || !prefix || !quote || !specifier) {
+        continue;
+      }
       const rewrittenSpecifier = await rewriteSpecifier(
         specifier,
         currentImporterPath,
@@ -582,15 +602,19 @@ const collectImportPathRewrites = async (
 
   for (const file of files) {
     const filePath = toKey(path.join(cwd, file));
-    const originalImporterPath =
-      mode === "apply" ? originalPathsByCurrent.get(filePath) ?? filePath : filePath;
-    const currentImporterPath =
-      mode === "apply" ? filePath : relocatedTargetsBySource.get(filePath) ?? filePath;
+    const originalFilePath =
+      mode === "apply"
+        ? (originalPathsByCurrent.get(filePath) ?? filePath)
+        : filePath;
+    const currentFilePath =
+      mode === "apply"
+        ? filePath
+        : (relocatedTargetsBySource.get(filePath) ?? filePath);
     const content = await fs.readFile(filePath, "utf8");
     const rewritten = await rewriteContent(
       content,
-      currentImporterPath,
-      originalImporterPath,
+      currentFilePath,
+      originalFilePath,
       relocatedTargetsBySource,
       aliases,
     );
@@ -625,4 +649,8 @@ export const rewriteImportPaths = async (
   cwd: string,
   results: WriteResult[],
 ): Promise<ImportRewriteResult> =>
-  collectImportPathRewrites(cwd, getRelocationMapsFromResults(results), "apply");
+  collectImportPathRewrites(
+    cwd,
+    getRelocationMapsFromResults(results),
+    "apply",
+  );

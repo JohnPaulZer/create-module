@@ -1,6 +1,6 @@
-import path from "node:path";
 import chalk from "chalk";
 import fs from "fs-extra";
+import path from "node:path";
 import ora from "ora";
 import {
   detectModuleFormat,
@@ -32,11 +32,7 @@ import {
   type PhpRewriteResult,
 } from "../utils/rewritePhpNamespaces.js";
 import { resolvePlan, writePlan } from "../utils/safeWriteFile.js";
-
-const projectTypes: ProjectType[] = ["express", "mern", "laravel", "laravue"];
-
-const isProjectType = (value: string | undefined): value is ProjectType =>
-  Boolean(value && projectTypes.includes(value as ProjectType));
+import { validateOptions } from "../utils/validate.js";
 
 interface ProjectPaths {
   backendRoot: string;
@@ -48,15 +44,23 @@ type PackageJson = {
   devDependencies?: Record<string, string>;
 };
 
-const hasDependency = (manifest: PackageJson | undefined, dependency: string): boolean =>
-  Boolean(manifest?.dependencies?.[dependency] ?? manifest?.devDependencies?.[dependency]);
+const hasDependency = (
+  manifest: PackageJson | undefined,
+  dependency: string,
+): boolean =>
+  Boolean(
+    manifest?.dependencies?.[dependency] ??
+    manifest?.devDependencies?.[dependency],
+  );
 
 const readPackageJson = async (
   cwd: string,
   candidate: string,
 ): Promise<PackageJson | undefined> => {
   try {
-    return (await fs.readJson(path.join(cwd, candidate, "package.json"))) as PackageJson;
+    return (await fs.readJson(
+      path.join(cwd, candidate, "package.json"),
+    )) as PackageJson;
   } catch {
     return undefined;
   }
@@ -149,7 +153,10 @@ const getBackendScriptLanguage = async (
     return "typescript";
   }
 
-  return detectScriptLanguage(cwd, projectType === "mern" ? paths.backendRoot : ".");
+  return detectScriptLanguage(
+    cwd,
+    projectType === "mern" ? paths.backendRoot : ".",
+  );
 };
 
 const getFrontendScriptLanguage = async (
@@ -161,10 +168,16 @@ const getFrontendScriptLanguage = async (
     return getScriptLanguage(cwd, projectType, paths);
   }
 
-  return detectScriptLanguage(cwd, projectType === "mern" ? paths.frontendRoot : ".");
+  return detectScriptLanguage(
+    cwd,
+    projectType === "mern" ? paths.frontendRoot : ".",
+  );
 };
 
-const buildPlan = (projectType: ProjectType, options: GeneratorOptions): PlanItem[] => {
+const buildPlan = (
+  projectType: ProjectType,
+  options: GeneratorOptions,
+): PlanItem[] => {
   return generateLayeredPlan(projectType, options);
 };
 
@@ -287,23 +300,15 @@ export const createModules = async (
 ): Promise<void> => {
   const cwd = process.cwd();
 
-  if (rawOptions.type && !isProjectType(rawOptions.type)) {
-    throw new Error(
-      `Unknown project type "${rawOptions.type}". Use express, mern, laravel, or laravue.`,
-    );
-  }
-
-  if (rawOptions.copyExisting && rawOptions.moveExisting) {
-    throw new Error("Use either --copy-existing or --move-existing, not both.");
-  }
+  // Validate all options upfront
+  validateOptions(rawOptions);
 
   const detectionSpinner = ora("Detecting project type").start();
   const detection = await detectProjectType(cwd);
   detectionSpinner.succeed("Project scan complete");
 
   const projectType =
-    (rawOptions.type as ProjectType | undefined) ??
-    detection.detectedType;
+    (rawOptions.type as ProjectType | undefined) ?? detection.detectedType;
 
   if (!projectType) {
     throw new Error(
@@ -320,8 +325,16 @@ export const createModules = async (
     rawOptions.foldersOnly === true ? false : !shouldAutoStructure;
 
   const scriptLanguage = await getScriptLanguage(cwd, projectType, paths);
-  const backendScriptLanguage = await getBackendScriptLanguage(cwd, projectType, paths);
-  const frontendScriptLanguage = await getFrontendScriptLanguage(cwd, projectType, paths);
+  const backendScriptLanguage = await getBackendScriptLanguage(
+    cwd,
+    projectType,
+    paths,
+  );
+  const frontendScriptLanguage = await getFrontendScriptLanguage(
+    cwd,
+    projectType,
+    paths,
+  );
   const moduleFormat = await detectModuleFormat(cwd, paths.backendRoot);
   const planOptions: GeneratorOptions = {
     cwd,
@@ -351,7 +364,9 @@ export const createModules = async (
 
     if (!modules || modules.length === 0) {
       logger.warn("No module-like files were found.");
-      logger.warn("Nothing to auto-structure. Use --modules auth,user to create folders manually.");
+      logger.warn(
+        "Nothing to auto-structure. Use --modules auth,user to create folders manually.",
+      );
       return;
     }
 
@@ -369,8 +384,14 @@ export const createModules = async (
 
   const overwriteFiles = Boolean(rawOptions.force);
   const resolvedPlan = await resolvePlan(cwd, plan, overwriteFiles);
-  const importRewritePreview = await previewImportPathRewrites(cwd, resolvedPlan);
-  const phpRewritePreview = await previewPhpNamespaceRewrites(cwd, resolvedPlan);
+  const importRewritePreview = await previewImportPathRewrites(
+    cwd,
+    resolvedPlan,
+  );
+  const phpRewritePreview = await previewPhpNamespaceRewrites(
+    cwd,
+    resolvedPlan,
+  );
 
   printPreview(resolvedPlan);
   printRewritePreview(importRewritePreview, phpRewritePreview);
@@ -384,7 +405,9 @@ export const createModules = async (
   );
 
   if (existingFiles.length > 0 && !rawOptions.force) {
-    logger.warn("\nExisting target files will be skipped. Use --force to overwrite.");
+    logger.warn(
+      "\nExisting target files will be skipped. Use --force to overwrite.",
+    );
   }
 
   const conflicts = resolvedPlan.filter((item) => item.status === "conflict");
@@ -460,10 +483,14 @@ export const createModules = async (
 
   const cleanup = await cleanupEmptyMovedSourceFolders(cwd, results);
 
-  const created = results.filter((result) => result.action === "created").length;
+  const created = results.filter(
+    (result) => result.action === "created",
+  ).length;
   const copied = results.filter((result) => result.action === "copied").length;
   const moved = results.filter((result) => result.action === "moved").length;
-  const skipped = results.filter((result) => result.action === "skipped").length;
+  const skipped = results.filter(
+    (result) => result.action === "skipped",
+  ).length;
   const overwritten = results.filter(
     (result) => result.action === "overwritten",
   ).length;
@@ -473,6 +500,8 @@ export const createModules = async (
   );
 
   if (failed.length > 0) {
-    logger.warn("Some paths could not be created. Review the preview output above.");
+    logger.warn(
+      "Some paths could not be created. Review the preview output above.",
+    );
   }
 };

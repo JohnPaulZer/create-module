@@ -1,6 +1,6 @@
-import path from "node:path";
-import fs from "fs-extra";
 import fg from "fast-glob";
+import fs from "fs-extra";
+import path from "node:path";
 import type {
   ExistingFileAction,
   GeneratorOptions,
@@ -9,6 +9,7 @@ import type {
   ProjectType,
 } from "../types.js";
 import { formatModuleName } from "../utils/formatModuleName.js";
+import { cwd } from "node:process";
 
 interface AutoStructureOptions extends GeneratorOptions {
   projectType: ProjectType;
@@ -41,12 +42,16 @@ const skippedModuleNames = new Set([
   "vite",
 ]);
 
-const pathExists = (targetPath: string): Promise<boolean> => fs.pathExists(targetPath);
+const pathExists = (targetPath: string): Promise<boolean> =>
+  fs.pathExists(targetPath);
 
 const toModuleName = (value: string): ModuleName | undefined => {
   const cleaned = value
     .replace(/^use(?=[A-Z])/, "")
-    .replace(/(?:controller|route|routes|service|model|middleware|validation|types?|request|resource|repository|store)$/i, "")
+    .replace(
+      /(?:controller|route|routes|service|model|middleware|validation|types?|request|resource|repository|store)$/i,
+      "",
+    )
     .replace(/(?:page|component|view|status|check)$/i, "")
     .trim();
 
@@ -103,9 +108,10 @@ const moduleFromPascalFile = (
   suffix: string,
 ): ModuleName | undefined => {
   const fileName = path.basename(filePath, ".php");
-  const name = suffix && fileName.endsWith(suffix)
-    ? fileName.slice(0, -suffix.length)
-    : fileName;
+  const name =
+    suffix && fileName.endsWith(suffix)
+      ? fileName.slice(0, -suffix.length)
+      : fileName;
 
   return toModuleName(name);
 };
@@ -216,43 +222,54 @@ const scanExpressBackend = async (
     return 0;
   }
 
-  let matchedFiles = 0;
+  const allFileKinds = backendFileKinds.flatMap((fileKind) =>
+    fileKind.folders.map((folder) => ({ folder, suffix: fileKind.suffix })),
+  );
 
-  for (const fileKind of backendFileKinds) {
-    for (const folder of fileKind.folders) {
+  const allFilesResults = await Promise.all(
+    allFileKinds.map(async ({ folder, suffix }) => {
       const files = await fg([`${folder}/**/*.${globExtensions}`], {
         cwd: srcRoot,
         onlyFiles: true,
         ignore: ["modules/**"],
       });
+      return { folder, suffix, files };
+    }),
+  );
 
-      for (const file of files) {
-        const sourcePath = path.join(srcRoot, file);
-        const moduleName = moduleFromFileName(sourcePath);
-        const parts = fileParts(sourcePath);
+  let matchedFiles = 0;
 
-        if (!moduleName || !parts || !shouldIncludeModule(moduleName, options.moduleFilter)) {
-          continue;
-        }
+  for (const { folder, suffix, files } of allFilesResults) {
+    for (const file of files) {
+      const sourcePath = path.join(srcRoot, file);
+      const moduleName = moduleFromFileName(sourcePath);
+      const parts = fileParts(sourcePath);
 
-        modules.set(moduleName.slug, moduleName);
-        scopedModules.set(moduleName.slug, moduleName);
-        matchedFiles += 1;
-
-        addPlanItem(plan, seenTargets, {
-          operation: options.existingFileAction,
-          sourcePath,
-          targetPath: path.join(
-            options.cwd,
-            sourceRoot,
-            "src",
-            folder,
-            moduleName.slug,
-            path.basename(file),
-          ),
-          description: `existing ${fileKind.suffix} from ${relativeSource(options.cwd, sourcePath)}`,
-        });
+      if (
+        !moduleName ||
+        !parts ||
+        !shouldIncludeModule(moduleName, options.moduleFilter)
+      ) {
+        continue;
       }
+
+      modules.set(moduleName.slug, moduleName);
+      scopedModules.set(moduleName.slug, moduleName);
+      matchedFiles += 1;
+
+      addPlanItem(plan, seenTargets, {
+        operation: options.existingFileAction,
+        sourcePath,
+        targetPath: path.join(
+          options.cwd,
+          sourceRoot,
+          "src",
+          folder,
+          moduleName.slug,
+          path.basename(file),
+        ),
+        description: `existing ${suffix} from ${relativeSource(options.cwd, sourcePath)}`,
+      });
     }
   }
 
@@ -260,7 +277,10 @@ const scanExpressBackend = async (
 };
 
 const backendTargetFolderBySuffix = new Map(
-  backendFileKinds.map((fileKind) => [fileKind.targetSuffix, fileKind.folders[0]]),
+  backendFileKinds.map((fileKind) => [
+    fileKind.targetSuffix,
+    fileKind.folders[0],
+  ]),
 );
 
 const backendSuffixFromFileName = (filePath: string): string | undefined => {
@@ -317,7 +337,9 @@ const scanLegacyExpressModules = async (
     const moduleSegment = segments[1];
     const moduleName = moduleSegment ? toModuleName(moduleSegment) : undefined;
     const suffix = backendSuffixFromFileName(sourcePath);
-    const targetFolder = suffix ? backendTargetFolderBySuffix.get(suffix) : undefined;
+    const targetFolder = suffix
+      ? backendTargetFolderBySuffix.get(suffix)
+      : undefined;
 
     if (
       !moduleName ||
@@ -393,19 +415,27 @@ const scanLaravelBackend = async (
   scopedModules: Map<string, ModuleName>,
   seenTargets: Set<string>,
 ): Promise<number> => {
+  const allFilesResults = await Promise.all(
+    laravelKinds.map(async (fileKind) => {
+      const files = await fg([fileKind.pattern], {
+        cwd: options.cwd,
+        onlyFiles: true,
+      });
+      return { fileKind, files };
+    }),
+  );
+
   let matchedFiles = 0;
 
-  for (const fileKind of laravelKinds) {
-    const files = await fg([fileKind.pattern], {
-      cwd: options.cwd,
-      onlyFiles: true,
-    });
-
+  for (const { fileKind, files } of allFilesResults) {
     for (const file of files) {
       const sourcePath = path.join(options.cwd, file);
       const moduleName = moduleFromPascalFile(sourcePath, fileKind.suffix);
 
-      if (!moduleName || !shouldIncludeModule(moduleName, options.moduleFilter)) {
+      if (
+        !moduleName ||
+        !shouldIncludeModule(moduleName, options.moduleFilter)
+      ) {
         continue;
       }
 
@@ -471,7 +501,10 @@ const frontendKinds = (projectType: ProjectType) => [
     folders: ["api", "services"],
   },
   {
-    folders: projectType === "laravue" ? ["composables", "hooks"] : ["hooks", "loaders"],
+    folders:
+      projectType === "laravue"
+        ? ["composables", "hooks"]
+        : ["hooks", "loaders"],
   },
   {
     folders: ["components"],
@@ -515,7 +548,10 @@ const scanFrontend = async (
         const sourcePath = path.join(srcRoot, file);
         const moduleName = moduleFromFrontendFile(sourcePath);
 
-        if (!moduleName || !shouldIncludeModule(moduleName, options.moduleFilter)) {
+        if (
+          !moduleName ||
+          !shouldIncludeModule(moduleName, options.moduleFilter)
+        ) {
           continue;
         }
 
