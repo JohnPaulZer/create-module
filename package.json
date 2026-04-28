@@ -1,6 +1,6 @@
 {
   "name": "moducreate-jpz",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A beginner-friendly CLI that creates feature folders inside existing Express, MERN, Laravel, and LaraVue layer folders.",
   "type": "module",
   "main": "./dist/index.js",
