@@ -1,0 +1,11 @@
+{
+  "name": "moducreate-laravue-template",
+  "private": true,
+  "dependencies": {
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3",
+    "vite": "^5.0.0"
+  }
+}

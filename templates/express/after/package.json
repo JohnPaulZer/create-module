@@ -1,0 +1,11 @@
+{
+  "name": "moducreate-express-template",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "express": "^4.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3"
+  }
+}

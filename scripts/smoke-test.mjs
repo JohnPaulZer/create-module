@@ -218,13 +218,7 @@ try {
   assert.match(dryRunResult.stdout, /Import\/namespace preview/);
   await assertFile(path.join(autoProject, "src", "controllers", "health.controller.ts"));
 
-  const confirmationResult = await runCli([], autoProject, {
-    expectedExitCode: 1,
-  });
-  assert.match(confirmationResult.stderr, /requires confirmation/);
-  await assertFile(path.join(autoProject, "src", "controllers", "health.controller.ts"));
-
-  await runCli(["--yes"], autoProject);
+  await runCli([], autoProject);
   await assertFile(
     path.join(autoProject, "src", "controllers", "health", "health.controller.ts"),
   );
@@ -291,6 +285,9 @@ try {
   await mkdir(path.join(laravelProject, "app", "Services"), {
     recursive: true,
   });
+  await mkdir(path.join(laravelProject, "app", "Models"), {
+    recursive: true,
+  });
   await writeFile(
     path.join(
       laravelProject,
@@ -307,7 +304,12 @@ try {
     "<?php\n\nnamespace App\\Services;\n\nclass BookingService\n{\n    public function all(): array\n    {\n        return [];\n    }\n}\n",
     "utf8",
   );
-  await runCli(["--yes"], laravelProject);
+  await writeFile(
+    path.join(laravelProject, "app", "Models", "Booking.php"),
+    "<?php\n\nnamespace App\\Models;\n\nuse Illuminate\\Database\\Eloquent\\Model;\n\nclass Booking extends Model\n{\n}\n",
+    "utf8",
+  );
+  await runCli([], laravelProject);
   const rewrittenLaravelController = await readFile(
     path.join(
       laravelProject,
@@ -343,6 +345,19 @@ try {
       "utf8",
     ),
     /namespace App\\Services\\Booking;/,
+  );
+  assert.match(
+    await readFile(
+      path.join(
+        laravelProject,
+        "app",
+        "Models",
+        "Booking",
+        "Booking.php",
+      ),
+      "utf8",
+    ),
+    /namespace App\\Models\\Booking;/,
   );
 
   console.log("Smoke tests passed.");

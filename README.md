@@ -59,6 +59,15 @@ Create folders manually for selected modules:
 npx moducreate-jpz --type express --modules auth,user
 ```
 
+## Templates
+
+Sample projects live under `templates/<stack>`.
+
+- `before`: flat/mixed project files with multiple modules and import callers.
+- `after`: expected structure after running `npx moducreate-jpz`.
+
+Copy a `before` folder to a temporary location before running the CLI so the original sample stays unchanged.
+
 ## Important Commands
 
 ```bash
@@ -66,7 +75,6 @@ npx moducreate-jpz
 npx moducreate-jpz --dry-run
 npx moducreate-jpz --check
 npx moducreate-jpz --copy-existing
-npx moducreate-jpz --yes
 npx moducreate-jpz --type mern --dry-run
 npx moducreate-jpz --type laravel --modules auth,user
 ```
@@ -81,7 +89,6 @@ npx moducreate-jpz --type laravel --modules auth,user
 - `--move-existing`: Move existing matched files into module folders (default).
 - `--folders-only`: Create only folders, without starter files.
 - `--force`: Overwrite existing target files.
-- `-y, --yes`: Confirm move operations without prompting, useful for scripts.
 
 ## Supported Stacks
 
@@ -93,7 +100,7 @@ npx moducreate-jpz --type laravel --modules auth,user
 ## Safety Notes
 
 - A preview is shown before writing changes, including import and namespace updates.
-- Move operations ask for confirmation unless `--yes` is passed.
+- Move operations run automatically after the preview unless you use `--dry-run` or `--check`.
 - Relative JavaScript, TypeScript, Vue imports, and common `tsconfig`/`jsconfig`/Vite aliases are updated after moved files land in their new folders.
 - Laravel PHP namespaces and `use` statements are updated when classes move under module folders.
 - Existing target files are skipped unless `--force` is used.
