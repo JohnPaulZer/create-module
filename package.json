@@ -10,6 +10,7 @@
   "files": [
     "dist",
     "scripts/postinstall.mjs",
+    "templates",
     "README.md"
   ],
   "scripts": {

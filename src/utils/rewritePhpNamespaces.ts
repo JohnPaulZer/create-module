@@ -248,24 +248,24 @@ const insertUseStatements = (content: string, useStatements: string[]): string =
     return content;
   }
 
-  const namespaceMatch = content.match(/^namespace\s+[^;]+;\s*/m);
+  const namespaceMatch = content.match(/^namespace\s+[^;]+;/m);
 
   if (namespaceMatch?.index !== undefined) {
     const insertAt = namespaceMatch.index + namespaceMatch[0].length;
-    const afterNamespace = content.slice(insertAt);
-    const separator = afterNamespace.startsWith("\n") ? "" : "\n";
+    const afterNamespace = content.slice(insertAt).replace(/^\s*/, "");
+    const separator = afterNamespace ? "\n" : "";
 
-    return `${content.slice(0, insertAt)}${separator}${useStatements.join("\n")}\n${afterNamespace}`;
+    return `${content.slice(0, insertAt)}\n\n${useStatements.join("\n")}${separator}${afterNamespace}`;
   }
 
-  const phpOpenMatch = content.match(/^<\?php\s*/);
+  const phpOpenMatch = content.match(/^<\?php/);
 
   if (phpOpenMatch?.index !== undefined) {
     const insertAt = phpOpenMatch.index + phpOpenMatch[0].length;
-    const afterOpen = content.slice(insertAt);
-    const separator = afterOpen.startsWith("\n") ? "" : "\n";
+    const afterOpen = content.slice(insertAt).replace(/^\s*/, "");
+    const separator = afterOpen ? "\n" : "";
 
-    return `${content.slice(0, insertAt)}${separator}${useStatements.join("\n")}\n${afterOpen}`;
+    return `${content.slice(0, insertAt)}\n\n${useStatements.join("\n")}${separator}${afterOpen}`;
   }
 
   return `${useStatements.join("\n")}\n${content}`;
@@ -322,6 +322,26 @@ const rewritePhpContent = (
 ): { content: string; changes: PhpRewriteChange[] } => {
   let updatedContent = content;
   const changes: PhpRewriteChange[] = [];
+
+  for (const relocation of classRelocations) {
+    const pattern = new RegExp(
+      `(^|[^A-Za-z0-9_\\\\])(\\\\?)(${escapeRegExp(relocation.oldFqcn)})(?=[^A-Za-z0-9_\\\\]|$)`,
+      "g",
+    );
+
+    updatedContent = updatedContent.replace(pattern, (fullMatch, prefix: string, leadingSlash: string) => {
+      changes.push({
+        filePath: currentFilePath,
+        originalFilePath,
+        from: relocation.oldFqcn,
+        to: relocation.newFqcn,
+        kind: "use",
+      });
+
+      return `${prefix}${leadingSlash}${relocation.newFqcn}`;
+    });
+  }
+
   const newNamespace = shouldRewriteNamespace
     ? namespaceFromAppPath(cwd, currentFilePath)
     : undefined;
@@ -360,25 +380,6 @@ const rewritePhpContent = (
         changes,
       );
     }
-  }
-
-  for (const relocation of classRelocations) {
-    const pattern = new RegExp(
-      `(^|[^A-Za-z0-9_\\\\])(\\\\?)(${escapeRegExp(relocation.oldFqcn)})(?=[^A-Za-z0-9_\\\\]|$)`,
-      "g",
-    );
-
-    updatedContent = updatedContent.replace(pattern, (fullMatch, prefix: string, leadingSlash: string) => {
-      changes.push({
-        filePath: currentFilePath,
-        originalFilePath,
-        from: relocation.oldFqcn,
-        to: relocation.newFqcn,
-        kind: "use",
-      });
-
-      return `${prefix}${leadingSlash}${relocation.newFqcn}`;
-    });
   }
 
   return {

@@ -103,7 +103,7 @@ const moduleFromPascalFile = (
   suffix: string,
 ): ModuleName | undefined => {
   const fileName = path.basename(filePath, ".php");
-  const name = fileName.endsWith(suffix)
+  const name = suffix && fileName.endsWith(suffix)
     ? fileName.slice(0, -suffix.length)
     : fileName;
 

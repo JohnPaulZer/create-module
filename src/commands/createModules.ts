@@ -1,4 +1,3 @@
-import { createInterface } from "node:readline/promises";
 import path from "node:path";
 import chalk from "chalk";
 import fs from "fs-extra";
@@ -283,51 +282,6 @@ const hasPendingWrites = (plan: ResolvedPlanItem[]): boolean =>
 const hasBlockingConflicts = (plan: ResolvedPlanItem[]): boolean =>
   plan.some((item) => item.status === "conflict");
 
-const hasMoveOperations = (plan: ResolvedPlanItem[]): boolean =>
-  plan.some(
-    (item) =>
-      item.operation === "move" &&
-      (item.status === "create" || item.status === "overwrite"),
-  );
-
-const confirmMoveOperations = async (
-  plan: ResolvedPlanItem[],
-  options: CreateModulesOptions,
-): Promise<void> => {
-  if (!hasMoveOperations(plan) || options.yes) {
-    return;
-  }
-
-  const moveCount = plan.filter(
-    (item) =>
-      item.operation === "move" &&
-      (item.status === "create" || item.status === "overwrite"),
-  ).length;
-
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error(
-      `Moving ${moveCount} file${moveCount === 1 ? "" : "s"} requires confirmation. Re-run with --yes to continue, or use --copy-existing to avoid moving files.`,
-    );
-  }
-
-  const readline = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  try {
-    const answer = await readline.question(
-      `Move ${moveCount} existing file${moveCount === 1 ? "" : "s"} into module folders? [y/N] `,
-    );
-
-    if (!/^y(?:es)?$/i.test(answer.trim())) {
-      throw new Error("Cancelled. No files were changed.");
-    }
-  } finally {
-    readline.close();
-  }
-};
-
 export const createModules = async (
   rawOptions: CreateModulesOptions = {},
 ): Promise<void> => {
@@ -460,8 +414,6 @@ export const createModules = async (
     logger.success("\nDry run complete. No files were created or changed.");
     return;
   }
-
-  await confirmMoveOperations(resolvedPlan, rawOptions);
 
   const writeSpinner = ora("Creating folders and files").start();
   const results = await writePlan(resolvedPlan);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { createModules } from "./commands/createModules.js";
 import { logger } from "./utils/logger.js";
 
@@ -48,7 +48,9 @@ program
   .option("--check", "check whether changes are needed without writing files")
   .option("--dry-run", "show the preview without creating files")
   .option("--force", "overwrite existing files without prompting")
-  .option("-y, --yes", "confirm move operations without prompting")
+  .addOption(
+    new Option("-y, --yes", "deprecated; move operations are automatic").hideHelp(),
+  )
   .showHelpAfterError();
 
 try {
