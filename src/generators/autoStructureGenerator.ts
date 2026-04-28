@@ -9,7 +9,6 @@ import type {
   ProjectType,
 } from "../types.js";
 import { formatModuleName } from "../utils/formatModuleName.js";
-import { cwd } from "node:process";
 
 interface AutoStructureOptions extends GeneratorOptions {
   projectType: ProjectType;
@@ -298,7 +297,7 @@ const backendSuffixFromFileName = (filePath: string): string | undefined => {
     return undefined;
   }
 
-  const suffix = match[1].toLowerCase();
+  const suffix = (match[1] ?? "").toLowerCase();
 
   if (suffix === "route") {
     return "routes";
